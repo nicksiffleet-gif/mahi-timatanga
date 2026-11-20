@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Mahi Tīmatanga – PowerPoint content add-in manifest.
+  BEFORE USING: use Find & Replace to swap the placeholder for your GitHub username (lowercase).
+-->
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:type="ContentApp">
+  <Id>229de377-3cc8-45f2-a0f8-de14b67a9bb3</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>Mahi Tīmatanga</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="Mahi Tīmatanga Starter"/>
+  <Description DefaultValue="Starter-activity slide: 5 questions from the school question library, hidden answers and a countdown timer."/>
+  <IconUrl DefaultValue="https://YOUR-GITHUB-USERNAME.github.io/mahi-timatanga/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://YOUR-GITHUB-USERNAME.github.io/mahi-timatanga/icon-64.png"/>
+  <SupportUrl DefaultValue="https://YOUR-GITHUB-USERNAME.github.io/mahi-timatanga/"/>
+  <AppDomains>
+    <AppDomain>https://script.google.com</AppDomain>
+    <AppDomain>https://script.googleusercontent.com</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Presentation"/>
+  </Hosts>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://YOUR-GITHUB-USERNAME.github.io/mahi-timatanga/index.html"/>
+    <RequestedWidth>960</RequestedWidth>
+    <RequestedHeight>540</RequestedHeight>
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+  <AllowSnapshot>true</AllowSnapshot>
+</OfficeApp>
