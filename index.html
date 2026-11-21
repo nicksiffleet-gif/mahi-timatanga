@@ -48,7 +48,7 @@
   body { font-family: "Nunito Sans", "Segoe UI", Calibri, Arial, sans-serif; color: var(--text); background: var(--bg); }
 
   /* Everything is sized in vw so it scales with the add-in box (designed for a full 16:9 slide) */
-  #app { position: relative; height: 100%; display: flex; flex-direction: column; padding: 0 2.2vw 0; }
+  #app { cursor: pointer; position: relative; height: 100%; display: flex; flex-direction: column; padding: 0 2.2vw 0; }
 
   /* Faint koru in the background corners */
   .corner { position: absolute; bottom: 1vw; width: 22vw; height: 22vw; opacity: var(--corner-op); pointer-events: none; stroke: var(--corner); }
@@ -305,16 +305,41 @@ function renderGrid() {
   $('grid').innerHTML = cards.join('') + (existing ? '' : TIMER_HTML);
   if (existing) $('grid').appendChild(existing); else wireTimer();
   shownCount = 0;
-  $('grid').querySelectorAll('.q-card').forEach(c => c.addEventListener('click', revealNext));
 }
 
-/* Each click shows the next answer (1, then 2 ... then 5). One more click hides them all again. */
+/* Clicking anywhere on the slide (except the timer) works like a normal PowerPoint click:
+   clicks 1–5 reveal the answers in order, the next click moves to the next slide.
+   A presentation clicker / arrow keys do the same once the slide has been clicked. */
 let shownCount = 0;
-function revealNext() {
-  const cards = [...$('grid').querySelectorAll('.q-card')];
-  shownCount = shownCount < cards.length ? shownCount + 1 : 0;
-  cards.forEach((c, i) => c.classList.toggle('shown', i < shownCount));
+function showAnswers() {
+  $('grid').querySelectorAll('.q-card').forEach((c, i) => c.classList.toggle('shown', i < shownCount));
 }
+function goToSlide(which, fallback) {
+  if (inOffice && mode === 'read') {
+    Office.context.document.goToByIdAsync(which, Office.GoToType.Index, r => {
+      if (r.status === Office.AsyncResultStatus.Failed) fallback();
+      else { shownCount = 0; showAnswers(); }   // reset, so answers are hidden if you come back
+    });
+  } else fallback();
+}
+function stepForward() {
+  const n = $('grid').querySelectorAll('.q-card').length;
+  if (shownCount < n) { shownCount++; showAnswers(); }
+  else goToSlide('next', () => { shownCount = 0; showAnswers(); });  // edit view / browser: hide all instead
+}
+function stepBack() {
+  if (shownCount > 0) { shownCount--; showAnswers(); }
+  else goToSlide('previous', () => {});
+}
+$('app').addEventListener('click', e => {
+  if (e.target.closest('#tcard, #selectBtn, #hint, #picker')) return;
+  stepForward();
+});
+document.addEventListener('keydown', e => {
+  if (!$('picker').hidden) return;
+  if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter', 'n', 'N'].includes(e.key)) { e.preventDefault(); stepForward(); }
+  else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace', 'p', 'P'].includes(e.key)) { e.preventDefault(); stepBack(); }
+});
 
 /* ---------------- Timer ---------------- */
 let total = 300, remaining = 300, running = false, endAt = 0, tick = null, actx = null;
