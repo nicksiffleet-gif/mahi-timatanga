@@ -48,7 +48,7 @@
   body { font-family: "Nunito Sans", "Segoe UI", Calibri, Arial, sans-serif; color: var(--text); background: var(--bg); }
 
   /* Everything is sized in vw so it scales with the add-in box (designed for a full 16:9 slide) */
-  #app { cursor: pointer; position: relative; height: 100%; display: flex; flex-direction: column; padding: 0 2.2vw 0; }
+  #app { outline: none; cursor: pointer; position: relative; height: 100%; display: flex; flex-direction: column; padding: 0 2.2vw 0; }
 
   /* Faint koru in the background corners */
   .corner { position: absolute; bottom: 1vw; width: 22vw; height: 22vw; opacity: var(--corner-op); pointer-events: none; stroke: var(--corner); }
@@ -163,7 +163,7 @@
 </style>
 </head>
 <body>
-<div id="app">
+<div id="app" tabindex="-1">
   <svg class="corner l" viewBox="0 0 100 100" fill="none" stroke-width="5" stroke-linecap="round"><path d="M0,100 C0,45 35,10 70,10 C88,10 98,22 98,36 C98,50 87,58 76,58 C66,58 60,51 60,43 C60,36 65,32 71,32"/><path d="M0,70 C0,40 20,25 42,25 C55,25 62,33 62,42"/><path d="M30,100 C30,80 42,70 56,70 C66,70 72,77 72,84 C72,91 66,95 61,95"/></svg>
   <svg class="corner r" viewBox="0 0 100 100" fill="none" stroke-width="5" stroke-linecap="round"><path d="M0,100 C0,45 35,10 70,10 C88,10 98,22 98,36 C98,50 87,58 76,58 C66,58 60,51 60,43 C60,36 65,32 71,32"/><path d="M0,70 C0,40 20,25 42,25 C55,25 62,33 62,42"/><path d="M30,100 C30,80 42,70 56,70 C66,70 72,77 72,84 C72,91 66,95 61,95"/></svg>
   <div id="prayer"><span class="x">✝</span>Let us remember we are in the holy presence of God<span class="x">✝</span></div>
@@ -332,10 +332,14 @@ function stepBack() {
   else goToSlide('previous', () => {});
 }
 $('app').addEventListener('click', e => {
+  grabFocus();
   if (e.target.closest('#tcard, #selectBtn, #hint, #picker')) return;
   stepForward();
 });
-document.addEventListener('keydown', e => {
+// Keyboard only reaches the add-in while it has focus, so take focus whenever possible
+function grabFocus() { try { window.focus(); $('app').focus({ preventScroll: true }); } catch (e) {} }
+document.addEventListener('mousedown', grabFocus, true);
+window.addEventListener('keydown', e => {
   if (!$('picker').hidden) return;
   if (['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter', 'n', 'N'].includes(e.key)) { e.preventDefault(); stepForward(); }
   else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace', 'p', 'P'].includes(e.key)) { e.preventDefault(); stepBack(); }
@@ -394,6 +398,7 @@ function chime() {
 /* ---------------- Edit vs slideshow ---------------- */
 function applyView(v) {
   mode = v === 'read' ? 'read' : 'edit';
+  if (mode === 'read') grabFocus();
   document.body.classList.toggle('presenting', mode === 'read');
   if (mode === 'read') $('picker').hidden = true;
 }
