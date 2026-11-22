@@ -86,13 +86,13 @@
   .card { position: relative; background: #fff; border-radius: 1.2vw; border: 0.15vw solid var(--card-border); box-shadow: 0 0.25vw 0.8vw rgba(11,20,51,.08); padding: 1vw 1.1vw 0.9vw 1.1vw; display: flex; flex-direction: column; min-height: 0; overflow: hidden; cursor: pointer; }
   .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 0.45vw; background: linear-gradient(var(--accent1), var(--accent2)); }
   .badge { position: absolute; top: 0.8vw; left: 1.1vw; width: 3vw; height: 3vw; border-radius: 50%; background: var(--red); color: #fff; border: 0.25vw solid var(--gold); font-family: Montserrat, sans-serif; font-weight: 800; font-size: 1.6vw; display: flex; align-items: center; justify-content: center; }
-  .body { flex: 1; display: flex; gap: 1vw; align-items: center; min-height: 0; padding-left: 3.6vw; }
-  .body.has-img { padding-left: 0; padding-top: 3.2vw; }
-  .pic { flex: 0 0 45%; height: 100%; display: flex; align-items: center; justify-content: center; min-height: 0; }
+  .body { flex: 1; display: flex; gap: 1vw; align-items: center; min-height: 0; overflow: hidden; padding-left: 3.6vw; }
+  .body.has-img { padding-left: 3.6vw; padding-top: 0; gap: 0.8vw; }
+  .pic { flex: 0 0 56%; height: 100%; display: flex; align-items: center; justify-content: center; min-height: 0; }
   .pic img { max-width: 100%; max-height: 100%; object-fit: contain; }
-  .q { flex: 1; font-size: 1.75vw; font-weight: 600; line-height: 1.25; }
+  .q { flex: 1; max-height: 100%; font-size: 1.75vw; font-weight: 600; line-height: 1.25; }
   .body:not(.has-img) .q { font-size: 2vw; }
-  .ans { margin-top: 0.6vw; border-radius: 0.7vw; padding: 0.45vw 0.9vw; min-height: 2.9vw; font-size: 1.8vw; font-weight: 800; color: var(--red); background: var(--gold-soft); border: 0.15vw dashed #d9b400; display: flex; align-items: center; gap: 0.6vw; }
+  .ans { margin-top: 0.6vw; border-radius: 0.7vw; padding: 0.45vw 0.9vw; min-height: 2.9vw; font-size: 1.8vw; font-weight: 800; color: var(--red); background: var(--gold-soft); border: 0.15vw dashed #d9b400; display: flex; align-items: center; gap: 0.6vw; max-height: 34%; overflow: hidden; flex-shrink: 0; line-height: 1.2; }
   .ans span { transition: opacity .3s, filter .3s; }
   .q-card:not(.shown) .ans span { opacity: 0; }
   .q-card:not(.shown) .ans { background: repeating-linear-gradient(45deg, #fff8d6 0 0.8vw, #fdf1b8 0.8vw 1.6vw); }
@@ -208,7 +208,7 @@
    SETTINGS — paste your Google Apps Script web app URL between the quotes.
    Leave it empty ('') to use the built-in demo questions.
    ===================================================================== */
-const LIBRARY_URL = 'https://script.google.com/macros/s/AKfycbwCkrdzeUJOxnsG0wa1VMRFB_kLFlx4sMnfzXat9T__BF2KPQ0iBoswDd7ABs1Nq5W-/exec';
+const LIBRARY_URL = '';
 
 /* Design: 'a' = Ngahere (forest green), 'b' = FDMC navy + green, 'c' = Kākāriki (bold green board) */
 const THEME = 'c';
@@ -217,6 +217,34 @@ document.body.classList.add('theme-' + ((new URLSearchParams(location.search).ge
 const MAX_Q = 5;
 const KEY = 'mahiTimatanga';
 const DIFFS = ['Easy', 'Medium', 'Hard'];
+
+/* ---------------- Talking to the Google library ----------------
+   Tries a normal request first; if PowerPoint's browser blocks it, falls back to
+   loading it as a script (JSONP), which works almost everywhere. */
+const LIB_BASE = LIBRARY_URL.trim().replace(/^['"\s]+|['"\s]+$/g, '').split('?')[0].split('#')[0];
+function libJSONP(query) {
+  return new Promise((resolve, reject) => {
+    const cb = '__mt_cb_' + Date.now() + Math.floor(Math.random() * 1e6);
+    const el = document.createElement('script');
+    const done = () => { delete window[cb]; el.remove(); clearTimeout(t); };
+    const t = setTimeout(() => { done(); reject(new Error('the library took too long to answer')); }, 25000);
+    window[cb] = data => { done(); resolve(data); };
+    el.onerror = () => { done(); reject(new Error('the library address could not be reached')); };
+    el.src = LIB_BASE + '?' + query + '&callback=' + cb;
+    document.head.appendChild(el);
+  });
+}
+async function libGet(query) {
+  let data;
+  try {
+    const r = await fetch(LIB_BASE + '?' + query, { redirect: 'follow' });
+    data = await r.json();
+  } catch (e) {
+    data = await libJSONP(query);           // backup route
+  }
+  if (data && data.error) throw new Error(data.error);
+  return data;
+}
 
 /* ---------------- Demo library (used when LIBRARY_URL is empty) ---------------- */
 const svg = s => 'data:image/svg+xml;utf8,' + encodeURIComponent(s);
@@ -283,6 +311,23 @@ const TIMER_HTML = `
     <div class="controls"><button id="tstart">Start</button><button id="treset">Reset</button></div>
   </div>`;
 
+/* Shrink long questions/answers so they always fit inside their card */
+function fitText() {
+  document.querySelectorAll('.q-card').forEach(card => {
+    const body = card.querySelector('.body'), q = card.querySelector('.q'), ans = card.querySelector('.ans');
+    q.style.fontSize = ''; ans.style.fontSize = '';
+    let fs = parseFloat(getComputedStyle(q).fontSize), n = 0;
+    while ((body.scrollHeight > body.clientHeight + 1 || q.scrollHeight > q.clientHeight + 1) && n++ < 30 && fs > 8) {
+      fs *= 0.93; q.style.fontSize = fs + 'px';
+    }
+    let fa = parseFloat(getComputedStyle(ans).fontSize); n = 0;
+    while (ans.scrollHeight > ans.clientHeight + 1 && n++ < 30 && fa > 8) { fa *= 0.93; ans.style.fontSize = fa + 'px'; }
+  });
+}
+let fitTimer = null;
+window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(fitText, 120); });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => fitText());
+
 function renderGrid() {
   const cards = [];
   for (let i = 0; i < MAX_Q; i++) {
@@ -305,6 +350,7 @@ function renderGrid() {
   $('grid').innerHTML = cards.join('') + (existing ? '' : TIMER_HTML);
   if (existing) $('grid').appendChild(existing); else wireTimer();
   shownCount = 0;
+  requestAnimationFrame(fitText);
 }
 
 /* Clicking anywhere on the slide (except the timer) works like a normal PowerPoint click:
@@ -415,13 +461,11 @@ async function openPicker() {
     try {
       if (!LIBRARY_URL) lib = DEMO;
       else {
-        const r = await fetch(LIBRARY_URL + '?action=list');
-        const j = await r.json();
-        if (j.error) throw new Error(j.error);
+        const j = await libGet('action=list');
         lib = j.questions;
       }
     } catch (e) {
-      $('pBody').innerHTML = `<div class="msg err">Couldn’t load the library: ${esc(e.message)}<br>Check the internet connection and the LIBRARY_URL setting.</div>`;
+      $('pBody').innerHTML = `<div class="msg err">Couldn’t load the library: ${esc(e.message)}<br>Check the internet connection and the LIBRARY_URL setting.<br><small>Address used: ${esc(LIB_BASE.slice(0, 45))}…${esc(LIB_BASE.slice(-12))}</small></div>`;
       renderTray(); return;
     }
   }
@@ -490,9 +534,7 @@ async function savePicker() {
   try {
     const need = picked.filter(q => q.image && !String(q.image).startsWith('data:'));
     if (need.length && LIBRARY_URL) {
-      const r = await fetch(LIBRARY_URL + '?action=images&ids=' + encodeURIComponent(need.map(q => q.id).join(',')));
-      const j = await r.json();
-      if (j.error) throw new Error(j.error);
+      const j = await libGet('action=images&ids=' + encodeURIComponent(need.map(q => q.id).join(',')));
       need.forEach(q => { q.image = (j.images && j.images[q.id]) || ''; });
     }
     state.questions = picked.map(q => ({ id: q.id, question: q.question, answer: q.answer, image: q.image || '' }));
