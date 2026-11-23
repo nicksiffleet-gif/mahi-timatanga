@@ -140,6 +140,11 @@
   .p-head button { padding: 7px 14px; font-weight: 700; }
   #pSave { background: var(--gold); color: var(--navy); } #pSave:disabled { opacity: .5; cursor: default; }
   #pCancel { background: rgba(255,255,255,.15); color: #fff; }
+  #pAdd { background: #2e9e5b; color: #fff; }
+  .p-filter { display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-bottom: 1px solid #e6dfc8; background: #fff; }
+  .p-filter select { font: inherit; padding: 4px 6px; border: 1px solid #d6cfb6; border-radius: 6px; }
+  .p-filter small { color: #8a8470; }
+  .qrow .by { font-size: 11px; color: #8a8470; margin-left: 6px; }
   #pCrumbs { padding: 8px 12px; border-bottom: 1px solid #e6dfc8; }
   #pCrumbs a { color: var(--blue); cursor: pointer; text-decoration: underline; font-weight: 600; }
   #pBody { flex: 1; overflow: auto; padding: 10px 12px; }
@@ -195,9 +200,11 @@
 <div id="picker" hidden>
   <div class="p-head">
     <h2>Select questions <span id="pCount"></span></h2>
+    <button id="pAdd" title="Opens the Add-a-question form in your browser">＋ Add a question</button>
     <button id="pCancel">Cancel</button>
     <button id="pSave" disabled>Save to this slide</button>
   </div>
+  <div class="p-filter"><label for="pBy"><b>Added by:</b></label><select id="pBy"></select><small>(remembered on this computer)</small></div>
   <div id="pCrumbs"></div>
   <div id="pBody"></div>
   <div id="pTray"></div>
@@ -208,7 +215,7 @@
    SETTINGS — paste your Google Apps Script web app URL between the quotes.
    Leave it empty ('') to use the built-in demo questions.
    ===================================================================== */
-const LIBRARY_URL = 'https://script.google.com/macros/s/AKfycbwCkrdzeUJOxnsG0wa1VMRFB_kLFlx4sMnfzXat9T__BF2KPQ0iBoswDd7ABs1Nq5W-/exec';
+const LIBRARY_URL = '';
 
 /* Design: 'a' = Ngahere (forest green), 'b' = FDMC navy + green, 'c' = Kākāriki (bold green board) */
 const THEME = 'c';
@@ -456,21 +463,55 @@ async function openPicker() {
   picked = state.questions.map(q => ({ ...q }));
   path = {}; diff = 'Easy';
   $('picker').hidden = false;
-  if (!lib) {
+  {
     $('pBody').innerHTML = '<div class="msg">Loading question library…</div>';
     try {
-      if (!LIBRARY_URL) lib = DEMO;
+      if (!LIBRARY_URL) lib = DEMO.map(q => ({ ...q, author: q.author || 'FDMC library' }));
       else {
         const j = await libGet('action=list');
         lib = j.questions;
+        lib.forEach(q => { q.author = q.author || 'FDMC library'; });
       }
     } catch (e) {
       $('pBody').innerHTML = `<div class="msg err">Couldn’t load the library: ${esc(e.message)}<br>Check the internet connection and the LIBRARY_URL setting.<br><small>Address used: ${esc(LIB_BASE.slice(0, 45))}…${esc(LIB_BASE.slice(-12))}</small></div>`;
       renderTray(); return;
     }
   }
+  fillAuthors();
   renderPicker();
 }
+
+/* ---------- "Added by" filter ---------- */
+const BY_KEY = 'mahiTimatanga.addedBy';
+let byFilter = (() => { try { return localStorage.getItem(BY_KEY) || ''; } catch (e) { return ''; } })();
+function fillAuthors() {
+  const authors = uniq(lib.map(q => q.author)).sort((a, b) => (a === 'FDMC library' ? -1 : b === 'FDMC library' ? 1 : a.localeCompare(b)));
+  if (byFilter && !authors.includes(byFilter)) byFilter = '';
+  $('pBy').innerHTML = '<option value="">Everyone</option>' + authors.map(a => `<option ${a === byFilter ? 'selected' : ''}>${esc(a)}</option>`).join('');
+}
+$('pBy').addEventListener('change', () => {
+  byFilter = $('pBy').value;
+  try { localStorage.setItem(BY_KEY, byFilter); } catch (e) {}
+  path = {}; renderPicker();
+});
+const pool = () => byFilter ? lib.filter(q => q.author === byFilter) : lib;
+
+/* ---------- "Add a question" opens the Google Form ---------- */
+let formUrl = null;
+$('pAdd').addEventListener('click', async () => {
+  try {
+    if (!formUrl) {
+      if (!LIBRARY_URL) throw new Error('Connect the library first (LIBRARY_URL).');
+      formUrl = (await libGet('action=config')).formUrl;
+      if (!formUrl) throw new Error('The form has not been set up yet (run setupForm in Apps Script).');
+    }
+    if (window.Office && Office.context && Office.context.ui && Office.context.ui.openBrowserWindow) Office.context.ui.openBrowserWindow(formUrl);
+    else window.open(formUrl, '_blank');
+    $('pBody').insertAdjacentHTML('afterbegin', '<div class="msg">The form has opened in your browser. After adding a question, close and reopen this window to see it.</div>');
+  } catch (e) {
+    $('pBody').insertAdjacentHTML('afterbegin', `<div class="msg err">${esc(e.message || e)}</div>`);
+  }
+});
 
 function renderPicker() {
   const c = ['<a data-lvl="0">All years</a>'];
@@ -496,18 +537,18 @@ function renderPicker() {
     });
   };
 
-  if (!path.year) choose(uniq(lib.map(q => q.year)).sort((a, b) => parseFloat(a) - parseFloat(b) || String(a).localeCompare(b)), 'year', 'Year ');
-  else if (!path.unit) choose(uniq(lib.filter(q => q.year == path.year).map(q => q.unit)), 'unit');
-  else if (!path.topic) choose(uniq(lib.filter(q => q.year == path.year && q.unit == path.unit).map(q => q.topic)), 'topic');
+  if (!path.year) choose(uniq(pool().map(q => q.year)).sort((a, b) => parseFloat(a) - parseFloat(b) || String(a).localeCompare(b)), 'year', 'Year ');
+  else if (!path.unit) choose(uniq(pool().filter(q => q.year == path.year).map(q => q.unit)), 'unit');
+  else if (!path.topic) choose(uniq(pool().filter(q => q.year == path.year && q.unit == path.unit).map(q => q.topic)), 'topic');
   else {
-    const inTopic = lib.filter(q => q.year == path.year && q.unit == path.unit && q.topic == path.topic);
+    const inTopic = pool().filter(q => q.year == path.year && q.unit == path.unit && q.topic == path.topic);
     const tabs = DIFFS.map(d => `<button data-d="${d}" class="${d === diff ? 'on' : ''}">${d} (${inTopic.filter(q => q.difficulty == d).length})</button>`).join('');
     const qs = inTopic.filter(q => q.difficulty == diff);
     const full = picked.length >= MAX_Q;
     body.innerHTML = `<div class="tabs">${tabs}</div>` + (qs.length ? qs.map(q => {
       const on = picked.some(p => p.id === q.id);
       return `<label class="qrow ${!on && full ? 'disabled' : ''}"><input type="checkbox" data-id="${esc(q.id)}" ${on ? 'checked' : ''} ${!on && full ? 'disabled' : ''}>
-        <div><div>${fmt(q.question)}${q.image ? '<span class="tag">image</span>' : ''}</div><div class="qa">Answer: ${fmt(q.answer)}</div></div></label>`;
+        <div><div>${fmt(q.question)}${q.image ? '<span class="tag">image</span>' : ''}</div><div class="qa">Answer: ${fmt(q.answer)}${q.author && q.author !== 'FDMC library' ? `<span class="by">added by ${esc(q.author)}</span>` : ''}</div></div></label>`;
     }).join('') : '<div class="msg">No questions at this level yet.</div>');
     body.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { diff = b.dataset.d; renderPicker(); });
     body.querySelectorAll('input[type=checkbox]').forEach(cb => cb.onchange = () => {
@@ -529,13 +570,32 @@ function renderTray() {
   $('pTray').querySelectorAll('button').forEach(b => b.onclick = () => { picked = picked.filter(p => p.id !== b.dataset.id); lib ? renderPicker() : renderTray(); });
 }
 
+/* Teachers' photos can be several MB – shrink to max 800 px before saving into the slide */
+function shrinkImage(dataUrl, max = 800) {
+  return new Promise(resolve => {
+    if (!dataUrl || dataUrl.startsWith('data:image/svg')) return resolve(dataUrl);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      if (k === 1 && dataUrl.length < 400000) return resolve(dataUrl);
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+      const png = c.toDataURL('image/png'), jpg = c.toDataURL('image/jpeg', 0.85);
+      resolve(png.length <= jpg.length * 1.3 ? png : jpg);   // keep PNG for diagrams, JPEG for photos
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 async function savePicker() {
   $('pSave').disabled = true; $('pSave').textContent = 'Saving…';
   try {
     const need = picked.filter(q => q.image && !String(q.image).startsWith('data:'));
     if (need.length && LIBRARY_URL) {
       const j = await libGet('action=images&ids=' + encodeURIComponent(need.map(q => q.id).join(',')));
-      need.forEach(q => { q.image = (j.images && j.images[q.id]) || ''; });
+      for (const q of need) q.image = await shrinkImage((j.images && j.images[q.id]) || '');
     }
     state.questions = picked.map(q => ({ id: q.id, question: q.question, answer: q.answer, image: q.image || '' }));
     await store.save(state);
